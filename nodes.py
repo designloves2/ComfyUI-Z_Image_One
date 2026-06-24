@@ -894,14 +894,25 @@ async def _copy_to_input(request):
 class ZImageTurboOneNode:
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {}, "hidden": {"unique_id": "UNIQUE_ID"}}
+        return {
+            "required": {},
+            "optional": {
+                "prompt_override": ("STRING", {
+                    "default": "",
+                    "multiline": True,
+                    "forceInput": True,
+                    "tooltip": "외부 프롬프트 오버라이드 — 내부 프롬프트 앞에 추가됩니다.",
+                }),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "get_output_image"
     CATEGORY = " ✨ TJ_Node/Generator"
     OUTPUT_NODE = True
 
-    def get_output_image(self, unique_id=None, **kwargs):
+    def get_output_image(self, unique_id=None, prompt_override="", **kwargs):
         uid = str(unique_id) if unique_id else ""
         info = _last_images.get(uid, {})
         try:

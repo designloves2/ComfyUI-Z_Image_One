@@ -106,5 +106,12 @@
     "controlnet": {
       "categories": []
     }
-  }
+  },
+  "save_subfolder": "",
+  "output_mode_visible": true,
+  "selected_model": "ZIB\\z_image_bf16.safetensors",
+  "selected_text_encoder": "Qwen3\\qwen_3_4b_uncensored_aggressive.safetensors",
+  "selected_vae": "z-Image-Vae.safetensors",
+  "negative_prompt": "",
+  "prompt_suffix": ""
 }
