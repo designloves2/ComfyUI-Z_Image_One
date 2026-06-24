@@ -1,6 +1,6 @@
 # Z-Image ONE (TJ)
 
-<img width="864" height="690" alt="Screen Shot 2026-06-25 at 08 11 37 693 AM" src="https://github.com/user-attachments/assets/03d78431-7192-48aa-9339-7e181ccbdfdb" />
+<img width="958" height="757" alt="Screen Shot 2026-06-25 at 08 12 59 292 AM" src="https://github.com/user-attachments/assets/58d70bd9-4bb1-469b-99ee-f14cc0542135" />
 
 > **One Node to rule them all** — Z-Image Turbo(AuraFlow/Lumina2 계열 flow-matching 모델) 전용 올인원 UI 노드.  
 > 워크플로우 배선 없이 노드 하나에서 T2I · I2I · Inpaint · RE-BG · ControlNet · Face Redraw를 전환하며 사용합니다.
