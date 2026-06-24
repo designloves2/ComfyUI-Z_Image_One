@@ -1,12 +1,14 @@
 // one_node_z_image_turbo.js — Z-Image ONE (TJ)
 import { app } from "../../scripts/app.js";
 import { C, NODE_W, PREVIEW_SIZE, LEFT_W, PAD,
-         el, clear, loadState, saveState, defaultState, randomSeed } from "./modules/core.js";
+         el, clear, loadState, saveState, defaultState, randomSeed, LS_KEY } from "./modules/core.js";
 import { panel, label, button, select, numberField, row, col,
          modeBar, iconBtn } from "./modules/ui_common.js";
 import { queuePrompt, interrupt, copyOutputToInput, setLastImage,
          freeMemory, saveMeta } from "./modules/api.js";
 import { mountT2II2ILeft }     from "./modules/ui_t2i_i2i.js";
+import { mountInpaintLeft }    from "./modules/ui_inpaint.js";
+import { mountReBGLeft }       from "./modules/ui_rebg.js";
 import { mountControlNetLeft } from "./modules/ui_controlnet.js";
 import { mountFaceRedrawLeft } from "./modules/ui_face_redraw.js";
 import { createSettingsOverlay }  from "./modules/ui_app_settings.js";
@@ -27,19 +29,37 @@ const NODE_H     = ROOT_H + 30;
 const MODES = [
   { key:"t2i",         label:"T2I",         enabled:true },
   { key:"i2i",         label:"I2I",         enabled:true },
+  { key:"inpaint",     label:"INPAINT",     enabled:true },
+  { key:"rebg",        label:"RE-BG",       enabled:true },
   { key:"controlnet",  label:"CONTROLNET",  enabled:true },
   { key:"face_redraw", label:"FACE REDRAW", enabled:true },
 ];
 
 const SEND_TO = {
   t2i:        [{ mode:"i2i",        label:"→ I2I",     field:"i2iImage" },
+               { mode:"inpaint",    label:"→ Inpaint", field:"inpaintImage" },
+               { mode:"rebg",       label:"→ RE-BG",   field:"rebgImage" },
                { mode:"controlnet", label:"→ CN",       field:"controlnetImage" },
-               { mode:"face_redraw",label:"→ Redraw",   field:"faceImage" }],
-  i2i:        [{ mode:"controlnet", label:"→ CN",       field:"controlnetImage" },
-               { mode:"face_redraw",label:"→ Redraw",   field:"faceImage" }],
+               { mode:"face_redraw",label:"→ Redraw",  field:"faceImage" }],
+  i2i:        [{ mode:"inpaint",    label:"→ Inpaint", field:"inpaintImage" },
+               { mode:"rebg",       label:"→ RE-BG",   field:"rebgImage" },
+               { mode:"controlnet", label:"→ CN",       field:"controlnetImage" },
+               { mode:"face_redraw",label:"→ Redraw",  field:"faceImage" }],
+  inpaint:    [{ mode:"i2i",        label:"→ I2I",     field:"i2iImage" },
+               { mode:"rebg",       label:"→ RE-BG",   field:"rebgImage" },
+               { mode:"controlnet", label:"→ CN",       field:"controlnetImage" },
+               { mode:"face_redraw",label:"→ Redraw",  field:"faceImage" }],
+  rebg:       [{ mode:"i2i",        label:"→ I2I",     field:"i2iImage" },
+               { mode:"inpaint",    label:"→ Inpaint", field:"inpaintImage" },
+               { mode:"controlnet", label:"→ CN",       field:"controlnetImage" },
+               { mode:"face_redraw",label:"→ Redraw",  field:"faceImage" }],
   controlnet: [{ mode:"i2i",        label:"→ I2I",     field:"i2iImage" },
-               { mode:"face_redraw",label:"→ Redraw",   field:"faceImage" }],
+               { mode:"inpaint",    label:"→ Inpaint", field:"inpaintImage" },
+               { mode:"rebg",       label:"→ RE-BG",   field:"rebgImage" },
+               { mode:"face_redraw",label:"→ Redraw",  field:"faceImage" }],
   face_redraw:[{ mode:"i2i",        label:"→ I2I",     field:"i2iImage" },
+               { mode:"inpaint",    label:"→ Inpaint", field:"inpaintImage" },
+               { mode:"rebg",       label:"→ RE-BG",   field:"rebgImage" },
                { mode:"controlnet", label:"→ CN",       field:"controlnetImage" }],
 };
 
@@ -76,8 +96,9 @@ function createCompareView(originalURL, resultURL) {
     color:"#fff",fontSize:"11px",userSelect:"none",
   },text:"⟺"});
   divider.appendChild(handle);
-  let pos=100;
+  let pos=0;
   function update(p){pos=Math.max(0,Math.min(100,p));origWrap.style.width=pos+"%";divider.style.left=pos+"%";}
+  update(0);
   divider.addEventListener("pointerdown",e=>{
     divider.setPointerCapture(e.pointerId);
     const mv=e2=>{const r=container.getBoundingClientRect();update((e2.clientX-r.left)/r.width*100);};
@@ -110,7 +131,7 @@ app.registerExtension({
       const appConfig={output_mode_visible:true,save_subfolder:""};
       const modeResults={};  // per-mode result storage (in-memory)
 
-      let compareEnabled=false;  // compare toggle state
+      let compareEnabled=true;   // compare toggle state (기본 ON)
 
       function publishOutput(im){
         setLastImage(self.id,im);
@@ -153,18 +174,47 @@ app.registerExtension({
       const pillsWrap=el("div",{style:{flex:"1"}});
       let settingsOv,galleryOv,templateOv,promptExpandOv;
 
+      // ── Reset button ─────────────────────────────────────────────────────
+      const resetBtn=iconBtn("↺","노드 초기화 (저장 데이터 삭제 후 기본값 복원)",()=>{
+        if(!confirm("노드를 초기화하면 저장된 모든 설정과 이미지 경로가 삭제됩니다.\n계속하시겠습니까?")) return;
+        try{ localStorage.removeItem(LS_KEY); }catch(e){}
+        const fresh=defaultState({});
+        Object.keys(state).forEach(k=>{ delete state[k]; });
+        Object.assign(state,fresh);
+        compareEnabled=false;
+        compareBtn.style.background=C.bg2;
+        compareBtn.style.color=C.text;
+        compareBtn.style.border=`1px solid ${C.border}`;
+        compareBtn.title="Compare: OFF";
+        // 프리뷰 초기화
+        finalImg.src=""; finalImg.style.display="none";
+        placeholder.style.display="flex";
+        Object.keys(modeResults).forEach(k=>{ delete modeResults[k]; });
+        renderPills(); renderMode();
+        showPopup("노드가 초기화됐습니다.",false);
+      });
+      resetBtn.style.cssText+=`background:${C.bg2};border:1px solid ${C.border};border-radius:6px;padding:4px 8px;`;
+      resetBtn.onmouseenter=()=>resetBtn.style.filter="brightness(1.4)";
+      resetBtn.onmouseleave=()=>resetBtn.style.filter="none";
+
       // Compare toggle button
       const compareBtn=iconBtn("⇌","Compare: OFF",()=>{
         compareEnabled=!compareEnabled;
-        compareBtn.style.background=compareEnabled?C.lime:C.bg2;
+        compareBtn.title=compareEnabled?"Compare: ON":"Compare: OFF";
+        const bg=compareEnabled?C.lime:C.bg2;
+        compareBtn.style.background=bg;
         compareBtn.style.color=compareEnabled?"#ffffff":C.text;
         compareBtn.style.border=`1px solid ${compareEnabled?C.lime:C.border}`;
-        compareBtn.title=compareEnabled?"Compare: ON":"Compare: OFF";
-        // restorePreview is defined later — call via closure
-        if(typeof restorePreview==="function") restorePreview();
+        // Override hover handlers to preserve ON state
+        compareBtn.onmouseenter=()=>compareBtn.style.filter="brightness(1.15)";
+        compareBtn.onmouseleave=()=>compareBtn.style.filter="none";
+        // Re-show current mode result with new compare state
+        restorePreview();
       });
-      compareBtn.style.fontSize="16px";
-      compareBtn.style.width="34px";
+      compareBtn.title="Compare: ON";
+      compareBtn.style.cssText+=`background:${C.lime};color:#ffffff;border:1px solid ${C.lime};border-radius:6px;padding:4px 8px;`;
+      compareBtn.onmouseenter=()=>compareBtn.style.filter="brightness(1.15)";
+      compareBtn.onmouseleave=()=>compareBtn.style.filter="none";
 
       const unloadBtn=iconBtn("🗑","Unload RAM/VRAM",async()=>{
         unloadBtn.style.opacity="0.5";
@@ -172,11 +222,17 @@ app.registerExtension({
         catch(e){showPopup("Unload failed: "+(e.message||e));}
         setTimeout(()=>{unloadBtn.style.opacity="1";},2000);
       });
+      let helpOv;
+      const helpBtn=iconBtn("?","사용법 보기",()=>helpOv?.show());
+      helpBtn.style.cssText+=`font-weight:700;font-size:13px;`;
+
       topBar.appendChild(pillsWrap);
+      topBar.appendChild(resetBtn);
       topBar.appendChild(compareBtn);
       topBar.appendChild(unloadBtn);
       topBar.appendChild(iconBtn("⚙","Settings",()=>settingsOv?.show()));
       topBar.appendChild(iconBtn("🖼","Gallery", ()=>galleryOv?.show()));
+      topBar.appendChild(helpBtn);
       root.appendChild(topBar);
 
       // ── mainRow ─────────────────────────────────────────────────────────
@@ -425,8 +481,9 @@ app.registerExtension({
         clear(leftPanel);
         restorePreview(); renderSendTo();
         promptTA.value=getModePrompt(state.mode); updateCount();
-        if(state.mode==="paint") state.mode="i2i"; // paint removed — fall back to i2i
         if(state.mode==="t2i"||state.mode==="i2i") modeHandle=mountT2II2ILeft(leftPanel,state,ctx);
+        else if(state.mode==="inpaint")            modeHandle=mountInpaintLeft(leftPanel,state,ctx);
+        else if(state.mode==="rebg")               modeHandle=mountReBGLeft(leftPanel,state,ctx);
         else if(state.mode==="controlnet")         modeHandle=mountControlNetLeft(leftPanel,state,ctx);
         else if(state.mode==="face_redraw")        modeHandle=mountFaceRedrawLeft(leftPanel,state,ctx);
         leftPanel.appendChild(seedRow);
@@ -494,10 +551,145 @@ app.registerExtension({
         show(){pxTA.value=getModePrompt(state.mode);promptExpandEl.style.display="flex";setTimeout(()=>pxTA.focus(),50);}
       };
 
+      // ── Help overlay ─────────────────────────────────────────────────────
+      const HELP_SECTIONS = [
+        { title:"개요", body:
+`Z-Image ONE (TJ)은 Z-Image Turbo (Flow-matching 모델) 전용 올인원 생성 노드입니다.
+상단 모드 버튼으로 T2I / I2I / INPAINT / RE-BG / CONTROLNET / FACE REDRAW 를 전환하며,
+오른쪽 프리뷰에서 결과를 확인하고 하단 Send to 버튼으로 다음 작업으로 바로 넘길 수 있습니다.` },
+
+        { title:"⚙ 초기 설정 (Settings)", body:
+`우상단 ⚙ 버튼 → Settings 오버레이에서 아래를 반드시 설정하세요.
+• Diffusion Model  — UNet 모델 선택 (models/diffusion_models/)
+• Text Encoder     — CLIP 텍스트 인코더 선택 (models/text_encoders/)
+• VAE              — VAE 모델 선택 (models/vae/)
+• Negative Prompt  — 전 모드에 공통 적용할 부정 프롬프트
+• Prompt Suffix    — 전 모드 프롬프트 끝에 자동 추가할 키워드
+• Save Subfolder   — 저장 폴더 이름 (기본: z-image-one-tj)
+설정은 자동 저장되며 ComfyUI 재시작 후에도 유지됩니다.` },
+
+        { title:"T2I — 텍스트→이미지", body:
+`프롬프트로 이미지를 새로 생성합니다.
+• Resolution Preset — 자주 쓰는 해상도 프리셋 또는 Custom으로 직접 입력
+• Steps / CFG / Shift / Sampler / Scheduler — 샘플링 파라미터
+• LoRA (최대 3개) — LoRA 파일 선택, 강도 조절, 트리거 워드 자동 감지
+• Seed / Mode — Fixed(고정), Random(매번 랜덤), +1/-1(증감)
+생성 후 Send to 버튼으로 → I2I / INPAINT / RE-BG / CONTROLNET / FACE REDRAW 로 전달 가능.` },
+
+        { title:"I2I — 이미지→이미지", body:
+`소스 이미지를 참고해 변형 생성합니다.
+• Source Image 업로드 또는 다른 모드에서 Send to → I2I 로 전달
+• Denoise — 낮을수록 원본 유지(0.3~0.6), 높을수록 자유 변형(0.8~1.0)
+• Compare 버튼(⇌) — ON 시 결과와 원본을 슬라이더로 비교 가능` },
+
+        { title:"INPAINT — 마스크 영역 재생성", body:
+`이미지의 특정 영역만 프롬프트로 재생성합니다. DifferentialDiffusion 방식 사용.
+• Source Image 업로드
+• ✏ 마스크 수정하기 — 클릭 시 ComfyUI 기본 마스크 에디터 오픈.
+  흰색(White) = 재생성할 영역 / 검은색(Black) = 유지할 영역
+  저장 시 자동으로 마스크 이미지에 반영됩니다.
+• 직접 업로드 — 외부 툴로 만든 마스크 PNG를 업로드하는 대안 방법
+• Denoise — 0.7~0.9 권장. 낮을수록 원본 맥락 강하게 유지.
+핵심: DifferentialDiffusion이 마스크 경계를 부드럽게 처리해 자연스러운 합성.` },
+
+        { title:"RE-BG — 배경 재생성 + 확장", body:
+`RMBG로 서브젝트를 분리 후 배경만 완전 재생성합니다. 경계선 없음.
+기존 Outpaint의 경계선 문제를 해결한 방식입니다.
+• BG Removal Model — birefnet 등 설치된 배경제거 모델 선택
+• Source Image 업로드
+• Expansion px — Up/Down/Left/Right 각 방향으로 캔버스 확장 픽셀 지정.
+  모두 0이면 배경만 재생성(크기 유지), 값 입력 시 해당 방향으로 확장 후 재생성.
+• Edge Feathering — 확장 경계 블렌딩 강도 (px)
+• Background Denoise — 1.0=완전히 새 배경(권장), 낮추면 원본 색감 참조
+동작 원리:
+  1. RMBG → 서브젝트 마스크 추출
+  2. 확장된 캔버스 전체를 새 배경으로 재생성 (denoise=1)
+  3. 서브젝트를 새 배경 위에 합성 → 경계선 없는 완성 이미지` },
+
+        { title:"CONTROLNET — 구조/자세 참조 생성", body:
+`레퍼런스 이미지의 구조/자세/윤곽을 참고해 생성합니다.
+• ControlNet Union Model — models/model_patches/ 의 모델 선택
+• Reference Image 업로드
+• Control Type — Depth(깊이), Canny(윤곽선), Pose(자세), HED, MLSD, None
+• Strength — ControlNet 적용 강도 (0~1)
+• Resolution — 전처리 해상도 (512~1024)
+GetImageSize 노드로 레퍼런스 이미지 크기를 자동 감지해 latent 크기를 맞춥니다.` },
+
+        { title:"FACE REDRAW — 얼굴 재생성", body:
+`Impact Pack의 FaceDetailer를 사용해 얼굴 영역만 정밀 재생성합니다.
+• Face Detector — UltralyticsDetectorProvider용 모델 선택 (ultralytics/bbox/*.pt)
+• Source Portrait — 대상 인물 이미지 업로드
+• Threshold — 얼굴 감지 민감도 (낮을수록 더 많이 감지)
+• Dilation px — 감지 마스크 팽창 픽셀
+• Denoise — 얼굴 재생성 강도 (0.4~0.6 권장, 너무 높으면 원본과 달라짐)
+• Feather px — 마스크 경계 블렌딩
+사전 요구: ComfyUI Impact Pack 설치, ultralytics/bbox/ 에 감지 모델 필요.` },
+
+        { title:"공통 기능", body:
+`⇌ Compare  — ON 시 보라색 강조. 생성 결과와 소스 이미지를 슬라이더로 비교.
+             T2I 제외 전 모드에서 활성화 가능.
+🗑 Unload   — 현재 로드된 모델을 VRAM/RAM에서 해제.
+⚙ Settings — 모델 선택, 네거티브/접미사 프롬프트, 저장 설정.
+🖼 Gallery  — 저장된 이미지 갤러리. 즐겨찾기, 메타데이터 재사용, 삭제,
+             폴더 열기, 다른 모드로 Send to 기능 포함.
+📋 Template — 저장된 프롬프트 템플릿 불러오기.
+🔍 Expand   — 프롬프트를 전체 화면 에디터로 확장 편집.
+Send to     — 생성 결과를 다른 모드의 소스 이미지로 바로 전달.
+Output      — 👁 Preview(임시 저장) / 💾 Save(영구 저장) 전환.` },
+      ];
+
+      const helpEl=el("div",{style:{
+        position:"absolute",inset:"0",zIndex:"9998",
+        background:"rgba(11,11,11,0.98)",borderRadius:"inherit",
+        display:"none",flexDirection:"column",
+        padding:"14px",gap:"0",boxSizing:"border-box",
+      }});
+      const helpTop=el("div",{style:{display:"flex",alignItems:"center",gap:"8px",flexShrink:"0",marginBottom:"10px"}});
+      helpTop.appendChild(el("div",{
+        text:"? Z-Image ONE 사용 설명서",
+        style:{color:"#ffffff",fontSize:"14px",fontWeight:"700",flex:"1"},
+      }));
+      const helpClose=button("✕",()=>{helpEl.style.display="none";},"danger");
+      helpTop.appendChild(helpClose);
+      helpEl.appendChild(helpTop);
+
+      const helpBody=el("div",{style:{
+        flex:"1",overflowY:"auto",display:"flex",flexDirection:"column",gap:"12px",
+        paddingRight:"4px",
+      }});
+      helpBody.className="zit-lp";
+
+      HELP_SECTIONS.forEach(sec=>{
+        const block=el("div",{style:{
+          background:C.bg1,border:`1px solid ${C.border}`,borderRadius:"8px",padding:"10px 12px",
+        }});
+        block.appendChild(el("div",{
+          text:sec.title,
+          style:{color:C.lime,fontSize:"12px",fontWeight:"700",marginBottom:"6px",letterSpacing:"0.04em"},
+        }));
+        sec.body.split("\n").forEach(line=>{
+          const isItem=line.startsWith("•")||line.startsWith(" ");
+          block.appendChild(el("div",{
+            text:line||" ",
+            style:{
+              color:isItem?C.text:C.text,
+              fontSize:"11.5px",lineHeight:"1.65",
+              paddingLeft:isItem?"8px":"0",
+              color:line.startsWith("•")?"#c8c8c8":line.startsWith(" ")?"#a0a0a0":C.text,
+            },
+          }));
+        });
+        helpBody.appendChild(block);
+      });
+
+      helpEl.appendChild(helpBody);
+      helpOv={el:helpEl, show(){helpEl.style.display="flex";}};
+
       root.appendChild(settingsOv.el);
       root.appendChild(galleryOv.el);
       root.appendChild(templateOv.el);
       root.appendChild(promptExpandEl);
+      root.appendChild(helpEl);
 
       this.addDOMWidget("zit_ui","div",root,{
         getValue(){return null;}, setValue(){}, serialize:false,

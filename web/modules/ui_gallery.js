@@ -6,8 +6,8 @@ import { SUBFOLDER } from "./core.js";
 
 const SEND_TARGETS = [
   { mode:"i2i",        field:"i2iImage",       label:"→ I2I" },
-  { mode:"paint",      field:"inpaintImage",    label:"→ Inpaint",  extra:s=>{s.paintSub="inpaint";} },
-  { mode:"paint",      field:"outpaintImage",   label:"→ Outpaint", extra:s=>{s.paintSub="outpaint";} },
+  { mode:"inpaint",    field:"inpaintImage",    label:"→ Inpaint" },
+  { mode:"rebg",       field:"rebgImage",       label:"→ RE-BG" },
   { mode:"controlnet", field:"controlnetImage", label:"→ CN" },
   { mode:"face_redraw",field:"faceImage",       label:"→ Redraw" },
 ];

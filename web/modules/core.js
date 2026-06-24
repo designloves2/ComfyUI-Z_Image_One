@@ -104,6 +104,18 @@ export function defaultState(saved) {
     faceDenoise: saved.faceDenoise ?? 0.55,
     faceControlStrength: saved.faceControlStrength ?? 1,
 
+    // RE-BG (배경 확장 재생성 + RMBG 합성)
+    rebgImage:    saved.rebgImage    || null,
+    rebgBgModel:  saved.rebgBgModel  || "",
+    rebgUp:       saved.rebgUp    ?? 0,
+    rebgDown:     saved.rebgDown  ?? 0,
+    rebgLeft:     saved.rebgLeft  ?? 0,
+    rebgRight:    saved.rebgRight ?? 0,
+    rebgFeather:  saved.rebgFeather  ?? 40,
+    rebgDenoise:  saved.rebgDenoise  ?? 1,
+    rebgOffset:   saved.rebgOffset   ?? 0,
+    rebgBlur:     saved.rebgBlur     ?? 0,
+
     // OUTPUT
     outputMode: saved.outputMode || "save",
     saveSubfolder: saved.saveSubfolder || "",

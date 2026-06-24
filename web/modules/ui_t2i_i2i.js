@@ -100,6 +100,7 @@ export function mountT2II2ILeft(leftEl, state, ctx) {
       if (state.mode === "i2i" && !state.i2iImage) throw new Error("Upload a source image for I2I.");
     },
     getGraph() { return state.mode === "i2i" ? buildI2IGraph(state) : buildT2IGraph(state); },
+    getSourceURL() { return state.mode === "i2i" && state.i2iImage ? `/view?filename=${encodeURIComponent(state.i2iImage)}&type=input` : null; },
     onModeChange() { renderI2I(); renderRes(); ctx.resizeNode?.(); },
   };
 }

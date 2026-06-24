@@ -55,5 +55,6 @@ export function mountControlNetLeft(leftEl, state, ctx) {
       if (!state.controlnetModel || state.controlnetModel === "none") throw new Error("Select a ControlNet Union model.");
     },
     getGraph() { return buildControlNetGraph(state); },
+    getSourceURL() { return state.controlnetImage ? `/view?filename=${encodeURIComponent(state.controlnetImage)}&type=input` : null; },
   };
 }
