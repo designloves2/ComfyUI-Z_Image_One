@@ -7,7 +7,6 @@ import { panel, label, button, select, numberField, row, col,
 import { queuePrompt, interrupt, copyOutputToInput, setLastImage,
          freeMemory, saveMeta } from "./modules/api.js";
 import { mountT2II2ILeft }     from "./modules/ui_t2i_i2i.js";
-import { mountPaintLeft }      from "./modules/ui_paint.js";
 import { mountControlNetLeft } from "./modules/ui_controlnet.js";
 import { mountFaceRedrawLeft } from "./modules/ui_face_redraw.js";
 import { createSettingsOverlay }  from "./modules/ui_app_settings.js";
@@ -28,31 +27,19 @@ const NODE_H     = ROOT_H + 30;
 const MODES = [
   { key:"t2i",         label:"T2I",         enabled:true },
   { key:"i2i",         label:"I2I",         enabled:true },
-  { key:"paint",       label:"PAINT",       enabled:true },
   { key:"controlnet",  label:"CONTROLNET",  enabled:true },
   { key:"face_redraw", label:"FACE REDRAW", enabled:true },
 ];
 
 const SEND_TO = {
   t2i:        [{ mode:"i2i",        label:"→ I2I",     field:"i2iImage" },
-               { mode:"paint",      label:"→ Inpaint",  field:"inpaintImage",  extra:s=>{s.paintSub="inpaint";} },
-               { mode:"paint",      label:"→ Outpaint", field:"outpaintImage", extra:s=>{s.paintSub="outpaint";} },
                { mode:"controlnet", label:"→ CN",       field:"controlnetImage" },
                { mode:"face_redraw",label:"→ Redraw",   field:"faceImage" }],
-  i2i:        [{ mode:"paint",      label:"→ Inpaint",  field:"inpaintImage",  extra:s=>{s.paintSub="inpaint";} },
-               { mode:"paint",      label:"→ Outpaint", field:"outpaintImage", extra:s=>{s.paintSub="outpaint";} },
-               { mode:"controlnet", label:"→ CN",       field:"controlnetImage" },
-               { mode:"face_redraw",label:"→ Redraw",   field:"faceImage" }],
-  paint:      [{ mode:"i2i",        label:"→ I2I",     field:"i2iImage" },
-               { mode:"controlnet", label:"→ CN",       field:"controlnetImage" },
+  i2i:        [{ mode:"controlnet", label:"→ CN",       field:"controlnetImage" },
                { mode:"face_redraw",label:"→ Redraw",   field:"faceImage" }],
   controlnet: [{ mode:"i2i",        label:"→ I2I",     field:"i2iImage" },
-               { mode:"paint",      label:"→ Inpaint",  field:"inpaintImage",  extra:s=>{s.paintSub="inpaint";} },
-               { mode:"paint",      label:"→ Outpaint", field:"outpaintImage", extra:s=>{s.paintSub="outpaint";} },
                { mode:"face_redraw",label:"→ Redraw",   field:"faceImage" }],
   face_redraw:[{ mode:"i2i",        label:"→ I2I",     field:"i2iImage" },
-               { mode:"paint",      label:"→ Inpaint",  field:"inpaintImage",  extra:s=>{s.paintSub="inpaint";} },
-               { mode:"paint",      label:"→ Outpaint", field:"outpaintImage", extra:s=>{s.paintSub="outpaint";} },
                { mode:"controlnet", label:"→ CN",       field:"controlnetImage" }],
 };
 
@@ -169,11 +156,15 @@ app.registerExtension({
       // Compare toggle button
       const compareBtn=iconBtn("⇌","Compare: OFF",()=>{
         compareEnabled=!compareEnabled;
-        compareBtn.title=compareEnabled?"Compare: ON":"Compare: OFF";
         compareBtn.style.background=compareEnabled?C.lime:C.bg2;
-        compareBtn.style.color="#ffffff";
+        compareBtn.style.color=compareEnabled?"#ffffff":C.text;
+        compareBtn.style.border=`1px solid ${compareEnabled?C.lime:C.border}`;
+        compareBtn.title=compareEnabled?"Compare: ON":"Compare: OFF";
+        // restorePreview is defined later — call via closure
+        if(typeof restorePreview==="function") restorePreview();
       });
-      compareBtn.style.cssText+=`background:${C.bg2};border:1px solid ${C.border};border-radius:6px;padding:4px 8px;`;
+      compareBtn.style.fontSize="16px";
+      compareBtn.style.width="34px";
 
       const unloadBtn=iconBtn("🗑","Unload RAM/VRAM",async()=>{
         unloadBtn.style.opacity="0.5";
@@ -434,8 +425,8 @@ app.registerExtension({
         clear(leftPanel);
         restorePreview(); renderSendTo();
         promptTA.value=getModePrompt(state.mode); updateCount();
+        if(state.mode==="paint") state.mode="i2i"; // paint removed — fall back to i2i
         if(state.mode==="t2i"||state.mode==="i2i") modeHandle=mountT2II2ILeft(leftPanel,state,ctx);
-        else if(state.mode==="paint")              modeHandle=mountPaintLeft(leftPanel,state,ctx);
         else if(state.mode==="controlnet")         modeHandle=mountControlNetLeft(leftPanel,state,ctx);
         else if(state.mode==="face_redraw")        modeHandle=mountFaceRedrawLeft(leftPanel,state,ctx);
         leftPanel.appendChild(seedRow);

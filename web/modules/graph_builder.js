@@ -199,6 +199,8 @@ export function buildFaceRedrawGraph(state) {
       positive:["ZIT:positive",0],
       negative:["ZIT:negative",0],
       bbox_detector:["ZIT:bboxProv",0],
+      wildcard:"",
+      cycle:1,
       guide_size:512,
       guide_size_for:true,
       max_size:1024,
